@@ -14,8 +14,39 @@ android {
         versionCode = 1
         versionName = "1.0"
 
-        // URL de la aplicación web que envuelve esta app.
-        buildConfigField("String", "CAJERO_URL", "\"https://banamex.kidzania.tech/cajero/\"")
+    }
+
+    // Un APK por cada sección web de Banamex en KidZania.
+    flavorDimensions += "site"
+    productFlavors {
+        create("cajero") {
+            dimension = "site"
+            applicationId = "tech.kidzania.banamex.cajero"
+            resValue("string", "app_name", "Banamex Cajero")
+            buildConfigField("String", "SITE_URL", "\"https://banamex.kidzania.tech/cajero/\"")
+            buildConfigField("boolean", "USES_CAMERA", "false")
+        }
+        create("turnos") {
+            dimension = "site"
+            applicationId = "tech.kidzania.banamex.turnos"
+            resValue("string", "app_name", "Banamex Turnos")
+            buildConfigField("String", "SITE_URL", "\"https://banamex.kidzania.tech/turnos/\"")
+            buildConfigField("boolean", "USES_CAMERA", "false")
+        }
+        create("tarjeta") {
+            dimension = "site"
+            applicationId = "tech.kidzania.banamex.tarjeta"
+            resValue("string", "app_name", "Banamex Tarjeta")
+            buildConfigField("String", "SITE_URL", "\"https://banamex.kidzania.tech/tarjeta/\"")
+            buildConfigField("boolean", "USES_CAMERA", "true") // escaneo de QR
+        }
+        create("bancadigital") {
+            dimension = "site"
+            applicationId = "tech.kidzania.banamex.bancadigital"
+            resValue("string", "app_name", "Banamex Banca Digital")
+            buildConfigField("String", "SITE_URL", "\"https://banamex.kidzania.tech/bancadigital/\"")
+            buildConfigField("boolean", "USES_CAMERA", "true") // escaneo de QR
+        }
     }
 
     buildFeatures {

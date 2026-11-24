@@ -1,7 +1,9 @@
 package tech.kidzania.banamex.cajero
 
+import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Color
 import android.net.ConnectivityManager
 import android.net.Network
@@ -10,6 +12,8 @@ import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
+import android.webkit.PermissionRequest
+import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
@@ -21,7 +25,8 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 
 /**
- * Contenedor a pantalla completa de la aplicación web "Banamex Cajero".
+ * Contenedor a pantalla completa de una sección web de Banamex en KidZania
+ * (cajero, turnos, tarjeta o bancadigital; la URL se define por flavor en build.gradle.kts).
  * La página está diseñada para un escenario de 1920x1080 (horizontal) y se
  * escala sola dentro del WebView.
  */
@@ -30,11 +35,12 @@ class MainActivity : Activity() {
     private lateinit var webView: WebView
     private var showingOffline = false
     private var connectivityManager: ConnectivityManager? = null
+    private var pendingCameraRequest: PermissionRequest? = null
 
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
             // Al recuperar la conexión, reintenta automáticamente si estamos en la pantalla offline.
-            runOnUiThread { if (showingOffline) loadCajero() }
+            runOnUiThread { if (showingOffline) loadSite() }
         }
     }
 
@@ -64,7 +70,8 @@ class MainActivity : Activity() {
                 builtInZoomControls = false
                 displayZoomControls = false
             }
-            webViewClient = CajeroClient()
+            webViewClient = SiteClient()
+            webChromeClient = SiteChromeClient()
         }
         setContentView(webView)
 
@@ -72,7 +79,7 @@ class MainActivity : Activity() {
         connectivityManager?.registerDefaultNetworkCallback(networkCallback)
 
         if (savedInstanceState == null) {
-            loadCajero()
+            loadSite()
         } else {
             webView.restoreState(savedInstanceState)
         }
@@ -90,9 +97,9 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun loadCajero() {
+    private fun loadSite() {
         showingOffline = false
-        webView.loadUrl(BuildConfig.CAJERO_URL)
+        webView.loadUrl(BuildConfig.SITE_URL)
     }
 
     private fun showOffline() {
@@ -128,12 +135,52 @@ class MainActivity : Activity() {
         super.onDestroy()
     }
 
-    private inner class CajeroClient : WebViewClient() {
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode != REQUEST_CAMERA) return
+        val request = pendingCameraRequest ?: return
+        pendingCameraRequest = null
+        if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
+            request.grant(arrayOf(PermissionRequest.RESOURCE_VIDEO_CAPTURE))
+        } else {
+            request.deny()
+        }
+    }
+
+    /** Concede la cámara (solo video, solo a la web propia) para el escaneo de QR. */
+    private inner class SiteChromeClient : WebChromeClient() {
+
+        override fun onPermissionRequest(request: PermissionRequest) {
+            val siteHost = Uri.parse(BuildConfig.SITE_URL).host
+            val onlyVideo = request.resources.all { it == PermissionRequest.RESOURCE_VIDEO_CAPTURE }
+            if (!BuildConfig.USES_CAMERA || request.origin.host != siteHost || !onlyVideo) {
+                request.deny()
+                return
+            }
+            if (checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+                request.grant(arrayOf(PermissionRequest.RESOURCE_VIDEO_CAPTURE))
+            } else {
+                pendingCameraRequest?.deny()
+                pendingCameraRequest = request
+                requestPermissions(arrayOf(Manifest.permission.CAMERA), REQUEST_CAMERA)
+            }
+        }
+
+        override fun onPermissionRequestCanceled(request: PermissionRequest) {
+            if (pendingCameraRequest === request) pendingCameraRequest = null
+        }
+    }
+
+    private inner class SiteClient : WebViewClient() {
 
         override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
             val uri = request.url
             if (uri.scheme == "app" && uri.host == "retry") {
-                loadCajero()
+                loadSite()
                 return true
             }
             if (isInternal(uri)) return false
@@ -161,9 +208,13 @@ class MainActivity : Activity() {
         }
 
         private fun isInternal(uri: Uri): Boolean =
-            uri.scheme == "file" || uri.host == Uri.parse(BuildConfig.CAJERO_URL).host
+            uri.scheme == "file" || uri.host == Uri.parse(BuildConfig.SITE_URL).host
 
         private fun isOfflinePage(uri: Uri): Boolean =
             uri.scheme == "file" && uri.path == "/android_asset/offline.html"
+    }
+
+    private companion object {
+        const val REQUEST_CAMERA = 1
     }
 }
